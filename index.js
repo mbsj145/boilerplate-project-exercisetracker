@@ -12,11 +12,17 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
-// MongoDB connection
-mongoose.connect('mongodb+srv://muhammadbilal_db_user:nnFnqxi73A9MqkHz@cluster0.rcxmcoo.mongodb.net/exercise-tracker', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-});
+// ✅ Safe MongoDB connection for Vercel
+let isConnected = false;
+async function connectDB() {
+  if (isConnected) return;
+  await mongoose.connect("mongodb+srv://muhammadbilal_db_user:nnFnqxi73A9MqkHz@cluster0.rcxmcoo.mongodb.net/exercise-tracker", {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+  });
+  isConnected = true;
+}
+connectDB();
 
 // Schemas
 const userSchema = new mongoose.Schema({
@@ -39,31 +45,25 @@ app.get('/', (req, res) => {
   res.sendFile(__dirname + '/views/index.html');
 });
 
-// ✅ Create New User
+// Create User
 app.post('/api/users', async (req, res) => {
   const user = new User({ username: req.body.username });
   const savedUser = await user.save();
-
-  res.json({
-    username: savedUser.username,
-    _id: savedUser._id
-  });
+  res.json({ username: savedUser.username, _id: savedUser._id });
 });
 
-// ✅ Get All Users
+// Get All Users
 app.get('/api/users', async (req, res) => {
   const users = await User.find({}, '_id username');
   res.json(users);
 });
 
-// ✅ Add Exercise
+// Add Exercise
 app.post('/api/users/:_id/exercises', async (req, res) => {
   const user = await User.findById(req.params._id);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  const date = req.body.date
-    ? new Date(req.body.date)
-    : new Date();
+  const date = req.body.date ? new Date(req.body.date) : new Date();
 
   const exercise = new Exercise({
     userId: user._id,
@@ -83,14 +83,13 @@ app.post('/api/users/:_id/exercises', async (req, res) => {
   });
 });
 
-// ✅ Get Exercise Log
+// Get Logs
 app.get('/api/users/:_id/logs', async (req, res) => {
   const { from, to, limit } = req.query;
   const user = await User.findById(req.params._id);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   let filter = { userId: user._id };
-
   if (from || to) {
     filter.date = {};
     if (from) filter.date.$gte = new Date(from);
@@ -98,16 +97,13 @@ app.get('/api/users/:_id/logs', async (req, res) => {
   }
 
   let query = Exercise.find(filter).select('description duration date');
-
-  if (limit) {
-    query = query.limit(Number(limit));
-  }
+  if (limit) query = query.limit(Number(limit));
 
   const exercises = await query.exec();
 
   res.json({
     username: user.username,
-    count: exercises.length ?? 0,
+    count: exercises.length,
     _id: user._id,
     log: exercises.map(e => ({
       description: e.description,
@@ -117,7 +113,5 @@ app.get('/api/users/:_id/logs', async (req, res) => {
   });
 });
 
-// Listener
-const listener = app.listen(process.env.PORT || 3000, () => {
-  console.log('Your app is listening on port ' + listener.address().port);
-});
+// ✅ REQUIRED FOR VERCEL
+module.exports = app;
